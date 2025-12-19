@@ -13,13 +13,16 @@ setInterval(async () => {
   const mmTime = now.toLocaleTimeString("en-GB", { timeZone: "Asia/Yangon", hour12: false });
   const currentTime = mmTime.substring(0, 5); // HH:MM
 
-  // ညနေ ၆ နာရီ Auto Reset
-  if (currentTime === "18:00") {
-    await kv.delete(["morning_stats"]);
-    await kv.delete(["evening_stats"]);
-    return;
+  // ညနေ ၆ နာရီမှ မနက် ၉ နာရီခွဲကြား ဒေတာကျန်နေလျှင် ဖျက်ပစ်မည့် logic
+  if (currentTime >= "18:00" || currentTime < "09:30") {
+    const m = await kv.get(["morning_stats"]);
+    const e = await kv.get(["evening_stats"]);
+    if (m.value || e.value) {
+      await kv.delete(["morning_stats"]);
+      await kv.delete(["evening_stats"]);
+    }
+    return; // Reset အချိန်အတွင်းဆိုလျှင် အောက်က Tracking logic တွေကို မလုပ်တော့ဘဲ ရပ်လိုက်မည်
   }
-
   const isMorning = (currentTime >= "09:35" && currentTime <= "11:20");
   const isEvening = (currentTime >= "14:05" && currentTime <= "15:20");
 

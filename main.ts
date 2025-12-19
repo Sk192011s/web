@@ -2,13 +2,13 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 
 const kv = await Deno.openKv();
 
-// --- Background Logic: Tracking, Counting & Auto-Reset ---
+// --- Background Logic: Accurate Independent Tracking ---
 setInterval(async () => {
   const now = new Date();
   const mmTime = now.toLocaleTimeString("en-GB", { timeZone: "Asia/Yangon", hour12: false });
   const currentTime = mmTime.substring(0, 5); // HH:MM
 
-  // ညနေ ၆ နာရီမှာ ဒေတာ အလိုအလျောက် Reset လုပ်ခြင်း
+  // ညနေ ၆ နာရီ Auto Reset
   if (currentTime === "18:00") {
     await kv.delete(["morning_stats"]);
     await kv.delete(["evening_stats"]);
@@ -23,44 +23,59 @@ setInterval(async () => {
       const res = await fetch("https://api.thaistock2d.com/live");
       const data = await res.json();
       const live2d = data.live.twod;
-      const apiTime = data.live.time;
 
       if (live2d && live2d.length === 2) {
-        const h = live2d[0]; const t = live2d[1];
+        const curH = live2d[0]; // Current Head
+        const curT = live2d[1]; // Current Tail
         const key = isMorning ? "morning_stats" : "evening_stats";
-        const stats = (await kv.get([key])).value as any || { heads: {}, tails: {}, last: "--", lastApi: "" };
+        
+        const stats = (await kv.get([key])).value as any || { 
+          heads: {}, tails: {}, 
+          lastH: "", lastT: "", 
+          lastFull: "--" 
+        };
 
-        // API Time ပြောင်းမှသာ ဂဏန်းအသစ်ဟု သတ်မှတ်
-        if (stats.lastApi !== apiTime) {
-          stats.heads[h] = (stats.heads[h] || 0) + 1;
-          stats.tails[t] = (stats.tails[t] || 0) + 1;
-          stats.last = live2d;
-          stats.lastApi = apiTime;
+        let updated = false;
+
+        // ၁။ ထိပ်စီး ပြောင်းလဲမှုရှိမှသာ တိုးခြင်း
+        if (curH !== stats.lastH) {
+          stats.heads[curH] = (stats.heads[curH] || 0) + 1;
+          stats.lastH = curH;
+          updated = true;
+        }
+
+        // ၂။ နောက်ပိတ် ပြောင်းလဲမှုရှိမှသာ တိုးခြင်း
+        if (curT !== stats.lastT) {
+          stats.tails[curT] = (stats.tails[curT] || 0) + 1;
+          stats.lastT = curT;
+          updated = true;
+        }
+
+        if (updated) {
+          stats.lastFull = live2d;
           await kv.set([key], stats);
         }
       }
-    } catch (e) { /* API connection handle */ }
+    } catch (e) { /* Error */ }
   }
-}, 1000); // ၁ စက္ကန့်တစ်ခါ High-speed Polling
+}, 1000); // ၁ စက္ကန့်တစ်ခါ အတိအကျ စစ်ဆေးခြင်း
 
-// --- UI Design: Compact & Distinct (Slate Theme) ---
+// --- UI Design: Compact Slate Theme (Vertical) ---
 const UI_STYLE = `
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Inter:wght@400;700&display=swap');
   body { background: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; padding: 15px; }
-  .v-card { background: #1e293b; border: 1px solid #334155; border-radius: 20px; margin-bottom: 15px; padding: 20px; position: relative; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
-  .tag { position: absolute; top: 15px; right: 15px; font-size: 7px; font-weight: 900; padding: 3px 10px; border-radius: 50px; letter-spacing: 1px; text-transform: uppercase; }
+  .v-card { background: #1e293b; border: 1px solid #334155; border-radius: 20px; margin-bottom: 12px; padding: 15px 20px; position: relative; }
+  .tag { position: absolute; top: 12px; right: 15px; font-size: 7px; font-weight: 900; padding: 2px 8px; border-radius: 50px; letter-spacing: 1px; }
   .tag-live { background: #ef4444; color: #fff; animation: blink 1s infinite; }
-  .tag-off { background: #334155; color: #94a3b8; }
+  .tag-off { background: #334155; color: #64748b; }
   @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-  .main-val { font-family: 'Orbitron', sans-serif; font-size: 70px; line-height: 1; font-weight: 900; text-align: center; margin: 15px 0; color: #f3ca52; text-shadow: 0 0 20px rgba(243, 202, 82, 0.2); }
-  .hot-box { background: #0f172a; border-radius: 12px; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-left: 3px solid; }
-  .title-2d { font-size: 28px; font-weight: 900; italic: true; letter-spacing: -1px; text-transform: uppercase; }
+  .main-val { font-family: 'Orbitron', sans-serif; font-size: 60px; font-weight: 900; text-align: center; margin: 10px 0; color: #f3ca52; }
+  .hot-box { background: #0f172a; border-radius: 10px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; border-left: 3px solid; }
 `;
 
 serve(async (req) => {
   const url = new URL(req.url);
 
-  // 1. PUBLIC VIEW (AUTO-REFRESHING UI)
   if (url.pathname === "/" && req.method === "GET") {
     return new Response(`<!DOCTYPE html><html><head>
       <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -69,26 +84,26 @@ serve(async (req) => {
       <style>${UI_STYLE}</style>
     </head><body>
       <div class="max-w-sm mx-auto">
-        <header class="text-center mb-6 mt-2">
-          <h1 class="title-2d">2D <span class="text-yellow-500">Check</span></h1>
-          <p class="text-[8px] font-bold text-slate-500 uppercase tracking-[0.4em]">Real-time Analytics</p>
+        <header class="text-center mb-4 mt-2">
+          <h1 class="text-2xl font-black italic tracking-tighter uppercase">2D <span class="text-yellow-500">Check</span></h1>
+          <p class="text-[7px] font-bold text-slate-500 uppercase tracking-[0.4em]">Independent Digit Tracker</p>
         </header>
 
         <div id="m-session" class="v-card">
           <div id="m-tag" class="tag tag-off italic">Wait</div>
-          <h3 class="text-slate-400 font-bold uppercase text-[9px] tracking-widest text-left">Morning</h3>
+          <h3 class="text-slate-400 font-bold uppercase text-[8px] tracking-widest text-left">Morning Analytics</h3>
           <div id="m-val" class="main-val">--</div>
           <div id="m-stats"></div>
         </div>
 
         <div id="e-session" class="v-card">
           <div id="e-tag" class="tag tag-off italic">Wait</div>
-          <h3 class="text-slate-400 font-bold uppercase text-[9px] tracking-widest text-left">Evening</h3>
+          <h3 class="text-slate-400 font-bold uppercase text-[8px] tracking-widest text-left">Evening Analytics</h3>
           <div id="e-val" class="main-val">--</div>
           <div id="e-stats"></div>
         </div>
 
-        <footer class="text-center py-6 opacity-20"><p class="text-[7px] font-bold uppercase tracking-widest">&copy; 2DCHECK.DENO.DEV</p></footer>
+        <footer class="text-center py-4 opacity-10"><p class="text-[6px] font-bold uppercase tracking-widest">&copy; 2025 2DCHECK.DENO.DEV</p></footer>
       </div>
 
       <script>
@@ -110,17 +125,17 @@ serve(async (req) => {
               const tag = document.getElementById(ses[0] + '-tag');
               tag.innerText = st; tag.className = 'tag ' + (st === 'LIVE' ? 'tag-live' : 'tag-off');
 
-              if(s && s.last) {
-                document.getElementById(ses[0] + '-val').innerText = s.last;
+              if(s && s.lastFull) {
+                document.getElementById(ses[0] + '-val').innerText = s.lastFull;
                 const hT = Object.entries(s.heads).sort((a,b)=>b[1]-a[1]).slice(0,4);
                 const tT = Object.entries(s.tails).sort((a,b)=>b[1]-a[1]).slice(0,4);
                 
                 document.getElementById(ses[0] + '-stats').innerHTML = \`
-                  <div class="grid grid-cols-2 gap-3 mt-4">
-                    <div><p class="text-[7px] font-black text-slate-500 uppercase mb-2">Heads</p>
-                    \${hT.map(x => '<div class="hot-box border-yellow-500/50"><span class="font-black text-slate-100">' + x[0] + '</span><span class="text-slate-500 text-[9px] font-bold">' + x[1] + '</span></div>').join('')}</div>
-                    <div><p class="text-[7px] font-black text-slate-500 uppercase mb-2">Tails</p>
-                    \${tT.map(y => '<div class="hot-box border-blue-500/50"><span class="font-black text-slate-100">' + y[0] + '</span><span class="text-slate-500 text-[9px] font-bold">' + y[1] + '</span></div>').join('')}</div>
+                  <div class="grid grid-cols-2 gap-2 mt-4">
+                    <div><p class="text-[7px] font-black text-slate-500 uppercase mb-1">Heads</p>
+                    \${hT.map(x => '<div class="hot-box border-yellow-500/50"><span class="font-black text-slate-100 text-xs">' + x[0] + '</span><span class="text-slate-500 text-[8px] font-bold">' + x[1] + '</span></div>').join('')}</div>
+                    <div><p class="text-[7px] font-black text-slate-500 uppercase mb-1">Tails</p>
+                    \${tT.map(y => '<div class="hot-box border-blue-500/50"><span class="font-black text-slate-100 text-xs">' + y[0] + '</span><span class="text-slate-500 text-[8px] font-bold">' + y[1] + '</span></div>').join('')}</div>
                   </div>\`;
               }
             });
@@ -131,7 +146,6 @@ serve(async (req) => {
     </body></html>`, { headers: { "Content-Type": "text/html; charset=UTF-8" } });
   }
 
-  // 2. DATA API
   if (url.pathname === "/api/data" && req.method === "GET") {
     const m = (await kv.get(["morning_stats"])).value;
     const e = (await kv.get(["evening_stats"])).value;

@@ -7,13 +7,12 @@ async function getAdminPassword() {
   return entry.value as string | null;
 }
 
-// --- Background 2D Live Tracker Logic ---
+// --- Background Live Data Processor ---
 setInterval(async () => {
   const now = new Date();
   const mmTime = now.toLocaleTimeString("en-GB", { timeZone: "Asia/Yangon", hour12: false });
-  const currentTime = mmTime.substring(0, 5); // HH:MM
+  const currentTime = mmTime.substring(0, 5);
 
-  // ညီကိုသတ်မှတ်ထားသော အချိန်အပိုင်းအခြားများ
   const isMorning = (currentTime >= "09:35" && currentTime <= "11:20");
   const isEvening = (currentTime >= "14:05" && currentTime <= "15:20");
 
@@ -21,138 +20,138 @@ setInterval(async () => {
     try {
       const res = await fetch("https://api.thaistock2d.com/live");
       const data = await res.json();
-      const live2d = data.live.twod; // Official API 2D
+      const live2d = data.live.twod;
 
       if (live2d && live2d.length === 2) {
-        const head = live2d[0];
-        const tail = live2d[1];
-        const sessionKey = isMorning ? "morning_stats" : "evening_stats";
-        
-        const stats = (await kv.get([sessionKey])).value as any || { heads: {}, tails: {}, last: "", updateTime: "" };
+        const h = live2d[0]; const t = live2d[1];
+        const key = isMorning ? "morning_stats" : "evening_stats";
+        const stats = (await kv.get([key])).value as any || { heads: {}, tails: {}, last: "--", time: "" };
 
-        // အကျများဆုံးစာရင်းအတွက် ထိပ်စီးနှင့် နောက်ပိတ်ကို တွက်ချက်ခြင်း
-        stats.heads[head] = (stats.heads[head] || 0) + 1;
-        stats.tails[tail] = (stats.tails[tail] || 0) + 1;
+        stats.heads[h] = (stats.heads[h] || 0) + 1;
+        stats.tails[t] = (stats.tails[t] || 0) + 1;
         stats.last = live2d;
-        stats.updateTime = mmTime;
+        stats.time = mmTime;
 
-        await kv.set([sessionKey], stats);
+        await kv.set([key], stats);
       }
-    } catch (e) { /* API connection silent handle */ }
+    } catch (e) { /* API connection handle */ }
   }
-}, 3000); // ၃ စက္ကန့်တစ်ခါ Live ဒေတာဆွဲယူခြင်း
+}, 3000);
 
-// --- UI Components (Error-Free Structure) ---
-const UI_CSS = `
-  body { background-color: #0c0c0c; color: #fff; font-family: sans-serif; }
-  .card-bg { background-color: #111; border: 1px solid #222; border-radius: 16px; }
-  .hot-badge { background-color: #1a1a1a; border: 1px solid #333; padding: 6px 12px; border-radius: 8px; font-weight: 900; }
-  .btn-gold { background: linear-gradient(180deg, #f3ca52 0%, #a87f00 100%); color: #000; font-weight: 900; border-radius: 8px; }
+// --- Sleek UI Styles ---
+const UI_STYLE = `
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&display=swap');
+  body { background: #050505; color: #e0e0e0; font-family: 'Inter', sans-serif; }
+  .glass-card { background: rgba(20, 20, 20, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; }
+  .live-dot { height: 8px; width: 8px; background-color: #ef4444; border-radius: 50%; display: inline-block; animation: blink 1s infinite; }
+  @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+  .digit-font { font-family: 'Orbitron', sans-serif; }
+  .hot-box { background: #1a1a1a; border: 1px solid #262626; border-radius: 12px; padding: 10px; }
+  .btn-action { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #000; font-weight: 800; border-radius: 12px; transition: 0.2s; }
 `;
 
 serve(async (req) => {
   const url = new URL(req.url);
-  const storedPass = await getAdminPassword();
+  const adminPass = await getAdminPassword();
 
-  // 1. PUBLIC VIEW
+  // 1. PUBLIC VIEW (AUTO-UPDATE)
   if (url.pathname === "/" && req.method === "GET") {
-    const html = `
-    <!DOCTYPE html><html><head>
+    return new Response(`<!DOCTYPE html><html><head>
       <meta charset="UTF-8"><meta name="viewport" content="width=1024">
       <title>Winner-Corner 2D Live</title>
       <script src="https://cdn.tailwindcss.com"></script>
-      <style>${UI_CSS}</style>
-    </head><body class="p-6">
-      <div class="max-w-4xl mx-auto text-center">
-        <header class="py-10"><h1 class="text-7xl font-black italic text-yellow-500 uppercase tracking-tighter">Winner-Corner</h1></header>
-        
-        <section class="mb-12 px-10">
-          <h2 class="text-2xl font-bold text-white mb-4 uppercase tracking-[0.2em]">Thai 2D Real-time Analytics</h2>
-          <p class="text-zinc-500 text-lg leading-relaxed italic max-w-2xl mx-auto">
-            Powered by high-precision SET Index data. Professional frequency monitoring for statistical intelligence.
-          </p>
-          <div class="mt-8 flex justify-center gap-6">
-              <span class="text-xs font-black text-yellow-500 uppercase tracking-widest border-b-2 border-yellow-500 pb-1">✓ 90% Accuracy</span>
-              <span class="text-xs font-black text-yellow-500 uppercase tracking-widest border-b-2 border-yellow-500 pb-1">✓ Live Tracking</span>
-          </div>
-        </section>
+      <style>${UI_STYLE}</style>
+    </head><body class="p-8">
+      <div class="max-w-5xl mx-auto">
+        <div class="flex justify-between items-center mb-12">
+           <div><h1 class="text-4xl font-black tracking-tighter text-white uppercase digit-font">Winner-Corner <span class="text-yellow-500">2D</span></h1><p class="text-zinc-500 text-xs font-bold tracking-widest mt-1 uppercase">Advanced Real-Time Analytics</p></div>
+           <div class="flex items-center gap-3 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800"><span class="live-dot"></span><span class="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Live Engine Active</span></div>
+        </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-20">
-          <div class="card-bg p-8 border-t-4 border-yellow-500 shadow-2xl">
-            <h3 class="text-yellow-500 font-black uppercase text-sm mb-6">Morning (09:35 - 11:20)</h3>
-            <div id="m-live" class="text-7xl font-mono font-black mb-8 text-zinc-800">--</div>
-            <div id="m-stats" class="text-left space-y-6"></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+          <div class="glass-card p-10 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-yellow-500/50"></div>
+            <div class="flex justify-between items-start mb-8"><h3 class="text-zinc-400 font-black uppercase text-xs tracking-widest">Morning Session</h3><span class="text-[10px] text-zinc-600 font-mono">09:35 - 11:20</span></div>
+            <div id="m-val" class="text-8xl digit-font font-black text-white mb-10 tracking-tighter">--</div>
+            <div id="m-data" class="space-y-6"></div>
           </div>
-          <div class="card-bg p-8 border-t-4 border-sky-500 shadow-2xl">
-            <h3 class="text-sky-500 font-black uppercase text-sm mb-6">Evening (14:05 - 15:20)</h3>
-            <div id="e-live" class="text-7xl font-mono font-black mb-8 text-zinc-800">--</div>
-            <div id="e-stats" class="text-left space-y-6"></div>
+
+          <div class="glass-card p-10 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-blue-500/50"></div>
+            <div class="flex justify-between items-start mb-8"><h3 class="text-zinc-400 font-black uppercase text-xs tracking-widest">Evening Session</h3><span class="text-[10px] text-zinc-600 font-mono">14:05 - 15:20</span></div>
+            <div id="e-val" class="text-8xl digit-font font-black text-white mb-10 tracking-tighter">--</div>
+            <div id="e-data" class="space-y-6"></div>
           </div>
         </div>
 
-        <footer class="py-16 border-t border-zinc-900"><p class="text-zinc-600 text-[10px] font-black uppercase tracking-[0.4em]">&copy; 2025 WINNER-CORNER.DENO.DEV | ALL RIGHTS RESERVED</p></footer>
+        <footer class="mt-24 pt-10 border-t border-zinc-900 text-center"><p class="text-zinc-600 text-[10px] font-bold uppercase tracking-[0.5em]">&copy; 2025 WINNER-CORNER ANALYTICS</p></footer>
       </div>
 
       <script>
-        async function refreshStats() {
-          const res = await fetch('/api/stats'); const data = await res.json();
-          ['morning', 'evening'].forEach(ses => {
-            const s = data[ses + '_stats'];
-            if(s && s.last) {
-              const el = document.getElementById(ses[0] + '-live'); el.innerText = s.last; el.classList.replace('text-zinc-800', 'text-white');
+        async function updateDashboard() {
+          try {
+            const r = await fetch('/api/stats'); const d = await r.json();
+            ['morning', 'evening'].forEach(ses => {
+              const s = d[ses + '_stats']; if(!s) return;
+              const liveEl = document.getElementById(ses[0] + '-val'); 
+              liveEl.innerText = s.last || '--'; liveEl.classList.add('text-white');
+              
               const hTop = Object.entries(s.heads).sort((a,b)=>b[1]-a[1]).slice(0,4);
               const tTop = Object.entries(s.tails).sort((a,b)=>b[1]-a[1]).slice(0,4);
-              document.getElementById(ses[0] + '-stats').innerHTML = \`
-                <div><p class="text-[10px] text-zinc-500 uppercase font-black mb-2 tracking-widest">Hot Heads (Top 4)</p>
-                <div class="flex gap-2 flex-wrap">\${hTop.map(x => '<span class="hot-badge text-yellow-500">' + x[0] + ' (' + x[1] + ')</span>').join('')}</div></div>
-                <div><p class="text-[10px] text-zinc-500 uppercase font-black mb-2 tracking-widest">Hot Tails (Top 4)</p>
-                <div class="flex gap-2 flex-wrap">\${tTop.map(y => '<span class="hot-badge text-sky-400">' + y[0] + ' (' + y[1] + ')</span>').join('')}</div></div>\`;
-            }
-          });
+              
+              document.getElementById(ses[0] + '-data').innerHTML = \`
+                <div class="grid grid-cols-2 gap-4">
+                  <div class="hot-box"><p class="text-[9px] text-zinc-500 uppercase font-black mb-3 tracking-tighter">Hot Heads (Top 4)</p>
+                  <div class="flex flex-col gap-2">\${hTop.map(x => '<div class="flex justify-between text-sm"><span class="text-yellow-500 font-black">' + x[0] + '</span><span class="text-zinc-600 font-mono">' + x[1] + '</span></div>').join('')}</div></div>
+                  <div class="hot-box"><p class="text-[9px] text-zinc-500 uppercase font-black mb-3 tracking-tighter">Hot Tails (Top 4)</p>
+                  <div class="flex flex-col gap-2">\${tTop.map(y => '<div class="flex justify-between text-sm"><span class="text-blue-400 font-black">' + y[0] + '</span><span class="text-zinc-600 font-mono">' + y[1] + '</span></div>').join('')}</div></div>
+                </div>\`;
+            });
+          } catch(e){}
         }
-        setInterval(refreshStats, 5000); refreshStats();
+        setInterval(updateDashboard, 4000); updateDashboard();
       </script>
-    </body></html>`;
-    return new Response(html, { headers: { "Content-Type": "text/html; charset=UTF-8" } });
+    </body></html>`, { headers: { "Content-Type": "text/html; charset=UTF-8" } });
   }
 
-  // 2. ADMIN PANEL
+  // 2. ADMIN VIEW
   if (url.pathname === "/admin" && req.method === "GET") {
     let body = "";
-    if (!storedPass) {
-      body = `<div class="card-bg p-8 max-w-sm mx-auto text-center"><input type="password" id="np" class="w-full p-3 bg-zinc-900 border border-zinc-800 rounded mb-4" placeholder="Admin Key"><button onclick="setP()" class="btn-gold w-full p-3 uppercase">Save Setup</button></div><script>async function setP(){ await fetch("/api/config",{method:"POST",body:JSON.stringify({p:document.getElementById("np").value})}); location.reload(); }</script>`;
+    if (!adminPass) {
+      body = `<div class="glass-card p-8 max-w-sm mx-auto"><input type="password" id="np" class="w-full p-4 bg-black border border-zinc-800 rounded-xl mb-4 outline-none" placeholder="Set Admin Key"><button onclick="setP()" class="btn-action w-full p-4 uppercase">Initialize Setup</button></div><script>async function setP(){ await fetch("/api/config",{method:"POST",body:JSON.stringify({p:document.getElementById("np").value})}); location.reload(); }</script>`;
     } else {
       body = `
-        <div id="login-box" class="card-bg p-8 max-w-sm mx-auto text-center"><input type="password" id="ak" class="w-full p-3 bg-zinc-900 border border-zinc-800 rounded mb-4" placeholder="Enter Key"><button onclick="doL()" class="btn-gold w-full p-3 uppercase">Login</button></div>
-        <div id="dash" class="hidden text-center">
-          <div class="card-bg p-8 border-t-4 border-red-600 max-w-md mx-auto">
-            <h3 class="text-red-500 font-black uppercase text-xs mb-4">Wipe Analytics</h3>
-            <p class="text-zinc-500 text-xs mb-8">This will reset all frequency counts for Head and Tail digits.</p>
-            <button onclick="doR()" class="bg-red-600 text-white w-full py-4 rounded font-black uppercase">Reset All 2D Data</button>
+        <div id="lbox" class="glass-card p-8 max-w-sm mx-auto text-center">
+           <input type="password" id="ak" class="w-full p-4 bg-black border border-zinc-800 rounded-xl mb-4 outline-none" placeholder="Enter Key"><button onclick="doL()" class="btn-action w-full p-4 uppercase tracking-widest">Enter Admin</button>
+        </div>
+        <div id="dash" class="hidden text-center max-w-md mx-auto">
+          <div class="glass-card p-10 border-t-4 border-red-600">
+            <h3 class="text-red-500 font-black uppercase text-xs mb-4 tracking-widest">Wipe Live Stats</h3>
+            <p class="text-zinc-500 text-xs mb-8 italic">Clear all head/tail frequency data for the new session.</p>
+            <button onclick="doR()" class="bg-red-600/20 text-red-500 border border-red-900 w-full py-4 rounded-xl font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition">Reset All Frequency Data</button>
           </div>
-          <button onclick="sessionStorage.clear();location.reload()" class="mt-8 text-zinc-600 text-[10px] underline uppercase">Logout Admin</button>
+          <button onclick="sessionStorage.clear();location.reload()" class="mt-12 text-zinc-600 text-[10px] underline uppercase tracking-[0.3em]">Logout Securely</button>
         </div>
         <script>
-          const sk = sessionStorage.getItem('ak'); if(sk) { document.getElementById('login-box').classList.add('hidden'); document.getElementById('dash').classList.remove('hidden'); }
-          async function doL(){ const v=document.getElementById('ak').value; const r=await fetch('/api/verify',{method:'POST',body:JSON.stringify({p:v})}); if(r.ok){sessionStorage.setItem('ak',v);location.reload();}else{alert('Wrong!');} }
-          async function doR(){ if(!confirm('Reset counts?'))return; await fetch('/api/reset',{method:'POST',body:JSON.stringify({k:sk})}); location.reload(); }
+          const sk = sessionStorage.getItem('ak'); if(sk) { document.getElementById('lbox').classList.add('hidden'); document.getElementById('dash').classList.remove('hidden'); }
+          async function doL(){ const v=document.getElementById('ak').value; const r=await fetch('/api/verify',{method:'POST',body:JSON.stringify({p:v})}); if(r.ok){sessionStorage.setItem('ak',v);location.reload();}else{alert('Denied!');} }
+          async function doR(){ if(!confirm('Are you sure?'))return; await fetch('/api/reset',{method:'POST',body:JSON.stringify({k:sk})}); location.reload(); }
         </script>`;
     }
-    return new Response(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=1024"><script src="https://cdn.tailwindcss.com"></script><style>${UI_CSS}</style></head><body class="p-6 text-center"><h2 class="text-3xl font-black text-yellow-500 mb-8 italic uppercase">Admin Console</h2>${body}</body></html>`, { headers: { "Content-Type": "text/html; charset=UTF-8" } });
+    return new Response(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=1024"><script src="https://cdn.tailwindcss.com"></script><style>${UI_STYLE}</style></head><body class="p-10 text-center"><h2 class="text-2xl font-black text-white mb-12 uppercase tracking-[0.4em] digit-font">Admin <span class="text-yellow-500">Dashboard</span></h2>${body}</body></html>`, { headers: { "Content-Type": "text/html; charset=UTF-8" } });
   }
 
-  // --- 3. API HANDLERS ---
+  // 3. API ENDPOINTS
   if (url.pathname === "/api/stats" && req.method === "GET") {
-    const m = (await kv.get(["morning_stats"])).value;
-    const e = (await kv.get(["evening_stats"])).value;
+    const m = (await kv.get(["morning_stats"])).value; const e = (await kv.get(["evening_stats"])).value;
     return new Response(JSON.stringify({ morning_stats: m, evening_stats: e }));
   }
   if (url.pathname === "/api/reset" && req.method === "POST") {
-    const { k } = await req.json(); if (k !== storedPass) return new Response("Error", { status: 401 });
+    const { k } = await req.json(); if (k !== adminPass) return new Response("Error", { status: 401 });
     await kv.delete(["morning_stats"]); await kv.delete(["evening_stats"]); return new Response("OK");
   }
   if (url.pathname === "/api/verify" && req.method === "POST") {
-    const { p } = await req.json(); return p === storedPass ? new Response("OK") : new Response("Error", { status: 401 });
+    const { p } = await req.json(); return p === adminPass ? new Response("OK") : new Response("Error", { status: 401 });
   }
   if (url.pathname === "/api/config" && req.method === "POST") {
     const { p } = await req.json(); await kv.set(["config", "admin_password"], p); return new Response("OK");

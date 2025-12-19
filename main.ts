@@ -2,13 +2,13 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 
 const kv = await Deno.openKv();
 
-// --- High-Speed Background Logic (1-Second Interval) ---
+// --- Background Logic: Tracking, Counting & Auto-Reset ---
 setInterval(async () => {
   const now = new Date();
   const mmTime = now.toLocaleTimeString("en-GB", { timeZone: "Asia/Yangon", hour12: false });
   const currentTime = mmTime.substring(0, 5); // HH:MM
 
-  // ညနေ ၆ နာရီ Auto Reset
+  // ညနေ ၆ နာရီမှာ ဒေတာ အလိုအလျောက် Reset လုပ်ခြင်း
   if (currentTime === "18:00") {
     await kv.delete(["morning_stats"]);
     await kv.delete(["evening_stats"]);
@@ -20,117 +20,113 @@ setInterval(async () => {
 
   if (isMorning || isEvening) {
     try {
-      // ၁ စက္ကန့်တစ်ခါ Live ဒေတာဆွဲယူခြင်း
       const res = await fetch("https://api.thaistock2d.com/live");
       const data = await res.json();
       const live2d = data.live.twod;
-      const apiTimestamp = data.live.time; // API မှ လာသော အချိန်အတိအကျ
+      const apiTime = data.live.time;
 
       if (live2d && live2d.length === 2) {
+        const h = live2d[0]; const t = live2d[1];
         const key = isMorning ? "morning_stats" : "evening_stats";
-        const stats = (await kv.get([key])).value as any || { heads: {}, tails: {}, last: "--", lastApiTime: "" };
+        const stats = (await kv.get([key])).value as any || { heads: {}, tails: {}, last: "--", lastApi: "" };
 
-        // API ကပေးတဲ့ အချိန်ပြောင်းမှသာ ဂဏန်းအသစ်ဟု သတ်မှတ်ပြီး Count တိုးခြင်း
-        if (stats.lastApiTime !== apiTimestamp) {
-          const h = live2d[0]; 
-          const t = live2d[1];
-          
+        // API Time ပြောင်းမှသာ ဂဏန်းအသစ်ဟု သတ်မှတ်
+        if (stats.lastApi !== apiTime) {
           stats.heads[h] = (stats.heads[h] || 0) + 1;
           stats.tails[t] = (stats.tails[t] || 0) + 1;
           stats.last = live2d;
-          stats.lastApiTime = apiTimestamp;
-          
+          stats.lastApi = apiTime;
           await kv.set([key], stats);
         }
       }
-    } catch (e) { /* API Offline Handle */ }
+    } catch (e) { /* API connection handle */ }
   }
-}, 1000); // တစ်စက္ကန့်တစ်ခါ မပြတ်မကွက် စစ်ဆေးခြင်း
+}, 1000); // ၁ စက္ကန့်တစ်ခါ High-speed Polling
 
-// --- UI Design (Optimized for Fast Updates) ---
+// --- UI Design: Compact & Distinct (Slate Theme) ---
 const UI_STYLE = `
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Inter:wght@400;700&display=swap');
-  body { background: #030303; color: #fff; font-family: 'Inter', sans-serif; padding: 20px; }
-  .v-card { background: #0a0a0a; border: 1px solid #151515; border-radius: 35px; margin-bottom: 30px; padding: 45px 30px; position: relative; }
-  .tag { position: absolute; top: 25px; right: 30px; font-size: 8px; font-weight: 900; padding: 5px 12px; border-radius: 50px; letter-spacing: 1.5px; }
-  .tag-live { background: #ff0000; color: #fff; animation: blink 1s infinite; }
-  .tag-wait { background: #151515; color: #444; }
-  @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-  .digit-display { font-family: 'Orbitron', sans-serif; font-size: 110px; font-weight: 900; text-align: center; margin: 30px 0; background: linear-gradient(180deg, #fff 0%, #333 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  .stat-item { background: #0f0f0f; border-radius: 20px; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border: 1px solid #1a1a1a; }
+  body { background: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; padding: 15px; }
+  .v-card { background: #1e293b; border: 1px solid #334155; border-radius: 20px; margin-bottom: 15px; padding: 20px; position: relative; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
+  .tag { position: absolute; top: 15px; right: 15px; font-size: 7px; font-weight: 900; padding: 3px 10px; border-radius: 50px; letter-spacing: 1px; text-transform: uppercase; }
+  .tag-live { background: #ef4444; color: #fff; animation: blink 1s infinite; }
+  .tag-off { background: #334155; color: #94a3b8; }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .main-val { font-family: 'Orbitron', sans-serif; font-size: 70px; line-height: 1; font-weight: 900; text-align: center; margin: 15px 0; color: #f3ca52; text-shadow: 0 0 20px rgba(243, 202, 82, 0.2); }
+  .hot-box { background: #0f172a; border-radius: 12px; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-left: 3px solid; }
+  .title-2d { font-size: 28px; font-weight: 900; italic: true; letter-spacing: -1px; text-transform: uppercase; }
 `;
 
 serve(async (req) => {
   const url = new URL(req.url);
 
-  // 1. PUBLIC VIEW (AUTO-REFRESHING)
+  // 1. PUBLIC VIEW (AUTO-REFRESHING UI)
   if (url.pathname === "/" && req.method === "GET") {
     return new Response(`<!DOCTYPE html><html><head>
       <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>2D Check - Realtime Tracker</title>
+      <title>2D Check - Live</title>
       <script src="https://cdn.tailwindcss.com"></script>
       <style>${UI_STYLE}</style>
     </head><body>
-      <div class="max-w-md mx-auto">
-        <header class="text-center mb-12 pt-6">
-          <h1 class="text-5xl font-black italic tracking-tighter uppercase text-white">2D <span class="text-yellow-500">CHECK</span></h1>
-          <p class="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.5em] mt-2">Ultra-Fast Analytics Engine</p>
+      <div class="max-w-sm mx-auto">
+        <header class="text-center mb-6 mt-2">
+          <h1 class="title-2d">2D <span class="text-yellow-500">Check</span></h1>
+          <p class="text-[8px] font-bold text-slate-500 uppercase tracking-[0.4em]">Real-time Analytics</p>
         </header>
 
         <div id="m-session" class="v-card">
-          <div id="m-tag" class="tag tag-wait italic">Waiting</div>
-          <h3 class="text-zinc-600 font-bold uppercase text-[10px] tracking-widest text-left">Morning Session</h3>
-          <div id="m-val" class="digit-display">--</div>
+          <div id="m-tag" class="tag tag-off italic">Wait</div>
+          <h3 class="text-slate-400 font-bold uppercase text-[9px] tracking-widest text-left">Morning</h3>
+          <div id="m-val" class="main-val">--</div>
           <div id="m-stats"></div>
         </div>
 
         <div id="e-session" class="v-card">
-          <div id="e-tag" class="tag tag-wait italic">Waiting</div>
-          <h3 class="text-zinc-600 font-bold uppercase text-[10px] tracking-widest text-left">Evening Session</h3>
-          <div id="e-val" class="digit-display">--</div>
+          <div id="e-tag" class="tag tag-off italic">Wait</div>
+          <h3 class="text-slate-400 font-bold uppercase text-[9px] tracking-widest text-left">Evening</h3>
+          <div id="e-val" class="main-val">--</div>
           <div id="e-stats"></div>
         </div>
 
-        <footer class="text-center py-10 opacity-10"><p class="text-[8px] font-bold uppercase tracking-widest">&copy; 2025 2DCHECK.DENO.DEV</p></footer>
+        <footer class="text-center py-6 opacity-20"><p class="text-[7px] font-bold uppercase tracking-widest">&copy; 2DCHECK.DENO.DEV</p></footer>
       </div>
 
       <script>
-        function getStatus(start, end) {
+        function checkSt(start, end) {
           const t = new Date().toLocaleTimeString("en-GB", {timeZone: "Asia/Yangon", hour12: false}).substring(0,5);
           if (t >= start && t <= end) return 'LIVE';
-          if (t > end) return 'FINISHED';
+          if (t > end) return 'CLOSED';
           return 'WAITING';
         }
 
-        async function updateData() {
+        async function update() {
           try {
             const r = await fetch('/api/data'); const d = await r.json();
             const config = { morning: ["09:35", "11:20"], evening: ["14:05", "15:20"] };
 
             ['morning', 'evening'].forEach(ses => {
               const s = d[ses + '_stats'];
-              const st = getStatus(config[ses][0], config[ses][1]);
+              const st = checkSt(config[ses][0], config[ses][1]);
               const tag = document.getElementById(ses[0] + '-tag');
-              tag.innerText = st; tag.className = 'tag ' + (st === 'LIVE' ? 'tag-live' : 'tag-wait');
+              tag.innerText = st; tag.className = 'tag ' + (st === 'LIVE' ? 'tag-live' : 'tag-off');
 
               if(s && s.last) {
                 document.getElementById(ses[0] + '-val').innerText = s.last;
-                const hTop = Object.entries(s.heads).sort((a,b)=>b[1]-a[1]).slice(0,4);
-                const tTop = Object.entries(s.tails).sort((a,b)=>b[1]-a[1]).slice(0,4);
+                const hT = Object.entries(s.heads).sort((a,b)=>b[1]-a[1]).slice(0,4);
+                const tT = Object.entries(s.tails).sort((a,b)=>b[1]-a[1]).slice(0,4);
                 
                 document.getElementById(ses[0] + '-stats').innerHTML = \`
-                  <div class="mt-8">
-                    <p class="text-[8px] font-black text-zinc-700 uppercase mb-4 tracking-widest text-center">Top Frequency Hits</p>
-                    <div class="grid grid-cols-2 gap-4">
-                      <div>\${hTop.map(x => '<div class="stat-item"><span class="font-black text-xl text-yellow-500">' + x[0] + '</span><span class="text-zinc-600 text-[9px] font-black">' + x[1] + '</span></div>').join('')}</div>
-                      <div>\${tTop.map(y => '<div class="stat-item" style="border-color:#1e3a8a"><span class="font-black text-xl text-blue-500">' + y[0] + '</span><span class="text-zinc-600 text-[9px] font-black">' + y[1] + '</span></div>').join('')}</div>
-                    </div>
+                  <div class="grid grid-cols-2 gap-3 mt-4">
+                    <div><p class="text-[7px] font-black text-slate-500 uppercase mb-2">Heads</p>
+                    \${hT.map(x => '<div class="hot-box border-yellow-500/50"><span class="font-black text-slate-100">' + x[0] + '</span><span class="text-slate-500 text-[9px] font-bold">' + x[1] + '</span></div>').join('')}</div>
+                    <div><p class="text-[7px] font-black text-slate-500 uppercase mb-2">Tails</p>
+                    \${tT.map(y => '<div class="hot-box border-blue-500/50"><span class="font-black text-slate-100">' + y[0] + '</span><span class="text-slate-500 text-[9px] font-bold">' + y[1] + '</span></div>').join('')}</div>
                   </div>\`;
               }
             });
           } catch(e) {}
         }
-        setInterval(updateData, 2000); updateData();
+        setInterval(update, 2000); update();
       </script>
     </body></html>`, { headers: { "Content-Type": "text/html; charset=UTF-8" } });
   }

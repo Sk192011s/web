@@ -23,8 +23,8 @@ setInterval(async () => {
     }
     return; // Reset အချိန်အတွင်းဆိုလျှင် အောက်က Tracking logic တွေကို မလုပ်တော့ဘဲ ရပ်လိုက်မည်
   }
-  const isMorning = (currentTime >= "09:35" && currentTime <= "11:20");
-  const isEvening = (currentTime >= "14:05" && currentTime <= "15:20");
+  const isMorning = (currentTime >= "09:30" && currentTime <= "11:35");
+  const isEvening = (currentTime >= "14:01" && currentTime <= "15:35");
 
   if (isMorning || isEvening) {
     isProcessing = true;

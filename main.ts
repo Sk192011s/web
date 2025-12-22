@@ -125,7 +125,7 @@ serve(async (req) => {
         async function updateUI() {
           try {
             const r = await fetch('/api/data'); const d = await r.json();
-            const config = { morning: ["09:35", "11:20"], evening: ["14:05", "15:20"] };
+            const config = { morning: ["09:30", "11:35"], evening: ["14:01", "15:35"] };
 
             ['morning', 'evening'].forEach(ses => {
               const s = d[ses + '_stats'];
